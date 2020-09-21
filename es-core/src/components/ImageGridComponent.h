@@ -72,6 +72,7 @@ private:
 	void updateTileAtPos(int tilePos, int imgPos, bool allowAnimation, bool updateSelectedState);
 	void calcGridDimension();
 	bool isScrollLoop();
+	bool isValidAutoGrid();
 
 	bool isVertical() { return mScrollDirection == SCROLL_VERTICALLY; };
 
@@ -86,6 +87,7 @@ private:
 	bool mLastRowPartial;
 	Vector2f mAutoLayout;
 	float mAutoLayoutZoom;
+	float mTileRatio;
 
 	Vector4f mPadding;
 	Vector2f mMargin;
@@ -118,6 +120,7 @@ ImageGridComponent<T>::ImageGridComponent(Window* window) : IList<ImageGridData,
 
 	mAutoLayout = Vector2f::Zero();
 	mAutoLayoutZoom = 1.0;
+	mTileRatio = -1.0f;
 
 	mStartPosition = 0;
 
@@ -270,6 +273,9 @@ void ImageGridComponent<T>::applyTheme(const std::shared_ptr<ThemeData>& theme, 
 
 		if (elem->has("autoLayoutSelectedZoom"))
 			mAutoLayoutZoom = elem->get<float>("autoLayoutSelectedZoom");
+
+		if (elem->has("tileRatio"))
+			mTileRatio = elem->get<float>("tileRatio");
 
 		if (elem->has("imageSource"))
 		{
@@ -515,23 +521,40 @@ void ImageGridComponent<T>::buildTiles()
 	mStartPosition = 0;
 	mTiles.clear();
 
-	calcGridDimension();
-
-	if (mCenterSelection)
-	{
-		int dimScrollable = (isVertical() ? mGridDimension.y() : mGridDimension.x()) - 2 * EXTRAITEMS;
-		mStartPosition -= (int) Math::floorf(dimScrollable / 2.0f);
-	}
-
 	Vector2f tileDistance = mTileSize + mMargin;
 
-	if (mAutoLayout.x() != 0 && mAutoLayout.y() != 0)
+	if (mAutoLayout.x() != 0 && mTileRatio > 0)
+	{
+		auto x = (mSize.x() - (mMargin.x() * (mAutoLayout.x() - 1)) - mPadding.x() - mPadding.z()) / (int) mAutoLayout.x();
+		auto y = x * mTileRatio;
+
+		mTileSize = Vector2f(x, y);
+		tileDistance = mTileSize + mMargin;
+	}
+	else if (mAutoLayout.y() != 0 && mTileRatio > 0)
+	{
+		auto y = (mSize.y() - (mMargin.y() * (mAutoLayout.y() - 1)) - mPadding.y() - mPadding.w()) / (int) mAutoLayout.y();
+		// we always assume a y/x ratio, therfore we invert it here
+		auto x = y * (1 / mTileRatio);
+
+		mTileSize = Vector2f(x, y);
+		tileDistance = mTileSize + mMargin;
+	}
+	else if (mAutoLayout.x() != 0 && mAutoLayout.y() != 0)
 	{
 		auto x = (mSize.x() - (mMargin.x() * (mAutoLayout.x() - 1)) - mPadding.x() - mPadding.z()) / (int) mAutoLayout.x();
 		auto y = (mSize.y() - (mMargin.y() * (mAutoLayout.y() - 1)) - mPadding.y() - mPadding.w()) / (int) mAutoLayout.y();
 
 		mTileSize = Vector2f(x, y);
 		tileDistance = mTileSize + mMargin;
+	}
+
+	calcGridDimension();
+
+	if (mCenterSelection)
+	{
+		int dimScrollable = (isVertical() ? mGridDimension.y() : mGridDimension.x()) - 2 * EXTRAITEMS;
+		mStartPosition -= (int) Math::floorf(dimScrollable / 2.0f);
 	}
 
 	bool vert = isVertical();
@@ -562,7 +585,7 @@ void ImageGridComponent<T>::buildTiles()
 			if (mTheme)
 				tile->applyTheme(mTheme, "grid", "gridtile", ThemeFlags::ALL);
 
-			if (mAutoLayout.x() != 0 && mAutoLayout.y() != 0)
+			if (isValidAutoGrid())
 				tile->forceSize(mTileSize, mAutoLayoutZoom);
 
 			mTiles.push_back(tile);
@@ -685,9 +708,6 @@ void ImageGridComponent<T>::calcGridDimension()
 	// <=> COLUMNS = (GRID_SIZE + MARGIN) / (TILE_SIZE + MARGIN)
 	Vector2f gridDimension = (mSize + mMargin) / (mTileSize + mMargin);
 
-	if (mAutoLayout.x() != 0 && mAutoLayout.y() != 0)
-		gridDimension = mAutoLayout;
-
 	mLastRowPartial = Math::floorf(gridDimension.y()) != gridDimension.y();
 
 	// Ceil y dim so we can display partial last row
@@ -700,10 +720,12 @@ void ImageGridComponent<T>::calcGridDimension()
 		LOG(LogError) << "Theme defined grid Y dimension below 1";
 
 	// Add extra tiles to both sides : Add EXTRAITEMS before, EXTRAITEMS after
+	// When lastRow is partial EXTRAITEMS are reduced by one
+	auto itemPadding = 2 * EXTRAITEMS - (mLastRowPartial ? 1 : 0);
 	if (isVertical())
-		mGridDimension.y() += 2 * EXTRAITEMS;
+		mGridDimension.y() += itemPadding;
 	else
-		mGridDimension.x() += 2 * EXTRAITEMS;
+		mGridDimension.x() += itemPadding;
 }
 
 template<typename T>
@@ -713,6 +735,13 @@ bool ImageGridComponent<T>::isScrollLoop() {
 	if (isVertical())
 		return (mGridDimension.x() * (mGridDimension.y() - 2 * EXTRAITEMS)) <= mEntries.size();
 	return (mGridDimension.y() * (mGridDimension.x() - 2 * EXTRAITEMS)) <= mEntries.size();
+};
+
+template<typename T>
+bool ImageGridComponent<T>::isValidAutoGrid(){ 
+	auto valiRatioGrid = mAutoLayout.x() != 0 && mAutoLayout.y() != 0;
+	auto validTileRatioGrid = mTileRatio > 0 && (mAutoLayout.x() != 0 || mAutoLayout.y() != 0);
+	return valiRatioGrid || validTileRatioGrid;
 };
 
 #endif // ES_CORE_COMPONENTS_IMAGE_GRID_COMPONENT_H

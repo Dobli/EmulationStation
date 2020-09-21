@@ -36,6 +36,7 @@ std::map<std::string, std::map<std::string, ThemeData::ElementPropertyType>> The
 		{ "padding", NORMALIZED_RECT },
 		{ "autoLayout", NORMALIZED_PAIR },
 		{ "autoLayoutSelectedZoom", FLOAT },
+		{ "tileRatio", FLOAT },
 		{ "gameImage", PATH },
 		{ "folderImage", PATH },
 		{ "imageSource", STRING },
